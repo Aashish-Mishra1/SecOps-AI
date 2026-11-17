@@ -1,0 +1,4 @@
+[
+  {"source":"synthetic-upload","source_event_id":"example-failure","timestamp":"2026-01-15T09:00:00Z","event_type":"authentication","source_ip":"192.0.2.45","username":"demo-analyst-01","outcome":"failure","metadata":{"synthetic":true}},
+  {"source":"synthetic-upload","source_event_id":"example-success","timestamp":"2026-01-15T09:10:00Z","event_type":"authentication","source_ip":"192.0.2.45","username":"demo-analyst-01","outcome":"success","metadata":{"synthetic":true}}
+]
