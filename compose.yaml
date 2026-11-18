@@ -17,6 +17,7 @@ services:
     build: ./backend
     env_file: .env
     environment:
+      DURABLE_WORKER: "true"
       DATABASE_URL: postgresql+psycopg://secops:${POSTGRES_PASSWORD}@db:5432/secops
     ports: ["127.0.0.1:8000:8000"]
     depends_on:
@@ -26,6 +27,16 @@ services:
       interval: 5s
       timeout: 5s
       retries: 30
+  worker:
+    build: ./backend
+    command: ["python", "-m", "app.worker"]
+    restart: unless-stopped
+    env_file: .env
+    environment:
+      DURABLE_WORKER: "true"
+      DATABASE_URL: postgresql+psycopg://secops:${POSTGRES_PASSWORD}@db:5432/secops
+    depends_on:
+      backend: {condition: service_healthy}
   frontend:
     build: ./frontend
     ports: ["127.0.0.1:5173:8080"]

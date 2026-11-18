@@ -14,6 +14,7 @@ from app.config import get_settings
 from app.db import session_factory
 from app.errors import AppError
 from app.models import AgentRun, Investigation, LLMCall, utcnow
+from app.observability.tracing import span
 
 
 def consume(investigation_id: UUID, kind: str) -> None:
@@ -68,6 +69,9 @@ class Execution:
                 )
             )
             db.commit()
+        self.span = span("agent." + self.agent)
+        self.agent_span = self.span.__enter__()
+        self.agent_span.set_attribute("investigation.id", str(self.investigation_id))
         return self
 
     def finish(self, result: dict | None, error_code: str | None = None) -> None:
@@ -90,6 +94,7 @@ class Execution:
         )
 
     def __exit__(self, kind, error, traceback):
+        self.span.__exit__(kind, error, traceback)
         if error is not None:
             self.finish(None, error.code if isinstance(error, AppError) else "agent_error")
 
@@ -116,7 +121,8 @@ class Execution:
                 )
                 db.commit()
             try:
-                completion = self.llm.generate(operation, payload, schema)
+                with span("llm." + operation):
+                    completion = self.llm.generate(operation, payload, schema)
                 self.check()
             except InvalidCompletion as exc:
                 completion, failure = exc.completion, "invalid_model_output"

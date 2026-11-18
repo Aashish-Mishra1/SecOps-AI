@@ -34,15 +34,15 @@ Gate: auth/import/retrieval integration tests, duplicate import and invalid uplo
 Gate: suspicious case goes from alert to cited draft to reviewed report, benign case remains proportionate; restart review test.
 
 ## M3 — Frontend vertical slice (90 minutes)
-- [ ] Login, app shell, alerts, import, knowledge base.
-- [ ] Investigation timeline with polling, evidence drawer, review and export.
-- [ ] Actual metrics dashboard, missing-data states and mock badge.
+- [x] Login, app shell, alerts, import, knowledge base.
+- [x] Investigation timeline with polling, evidence drawer, review and export.
+- [x] Actual metrics dashboard, missing-data states and mock badge.
 Gate: frontend typecheck/build and manual or scripted end-to-end smoke test.
 
 ## M4 — Reliability, metrics and documentation (60 minutes)
-- [ ] OpenTelemetry spans, performance metrics and evaluation fixture/script.
-- [ ] Provider failure, auth bypass, injection and retry-cap tests; CI workflow.
-- [ ] Run all tests, README and demo script; document failed/blocked checks honestly.
+- [x] OpenTelemetry spans, performance metrics and evaluation fixture/script.
+- [x] Provider failure, auth bypass, injection and retry-cap tests; CI workflow.
+- [x] Run all tests, README and demo script; document failed/blocked checks honestly.
 Gate: P0 acceptance matrix reviewed; reproducible local demo.
 
 ## M5 — Live AI and GCP (optional, 60–90 minutes after P0)

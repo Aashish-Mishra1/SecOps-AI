@@ -35,6 +35,8 @@ class Settings(BaseSettings):
     max_pdf_pages: int = Field(200, ge=1, le=200)
     requests_per_minute: int = Field(60, ge=1, le=10000)
     investigation_workers: int = Field(2, ge=1, le=4)
+    durable_worker: bool = False
+    trace_console: bool = False
     investigation_queue_size: int = Field(8, ge=1, le=32)
     investigation_timeout_seconds: int = Field(120, ge=5, le=600)
     graph_recursion_limit: int = Field(50, ge=10, le=100)

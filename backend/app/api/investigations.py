@@ -50,7 +50,7 @@ class InvestigationList(BaseModel):
 
 @router.post("", response_model=InvestigationOut, status_code=202)
 def create(body: InvestigationCreate, request: Request, db: DB, user: Analyst):
-    row = create_investigation(db, user, body.alert_id, body.request_id)
+    row = create_investigation(db, user, body.alert_id, body.request_id, auto_start=body.auto_start)
     if body.auto_start and row.status == "queued":
         try:
             request.app.state.investigation_runner.submit(row.id, user.organization_id)

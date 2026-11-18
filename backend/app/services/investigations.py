@@ -17,6 +17,7 @@ from app.graph.checkpoints import checkpoint_saver, connection
 from app.graph.contracts import ReviewInput
 from app.graph.workflow import build_graph
 from app.models import AgentRun, Alert, AuditEvent, Investigation, LLMCall, Review, ToolRun, User, utcnow
+from app.observability.tracing import tracer
 from app.services.investigation_tools import safe_text
 
 
@@ -48,7 +49,7 @@ def get_investigation(db, organization_id: UUID, investigation_id: UUID) -> Inve
     return row
 
 
-def create_investigation(db, user: User, alert_id: UUID, request_id: UUID) -> Investigation:
+def create_investigation(db, user: User, alert_id: UUID, request_id: UUID, auto_start: bool = False) -> Investigation:
     if user.role != "analyst":
         raise AppError(403, "forbidden", "Analyst role required")
     if not db.scalar(
@@ -80,6 +81,8 @@ def create_investigation(db, user: User, alert_id: UUID, request_id: UUID) -> In
         db.rollback()
         raise AppError(409, "idempotency_conflict", "Request ID is already associated with another alert")
     if row.id == identity:
+        if auto_start and get_settings().durable_worker:
+            row.status, row.started_at = "running", utcnow()
         db.add(
             AuditEvent(
                 organization_id=user.organization_id,
@@ -147,6 +150,8 @@ def record_review(db, user: User, investigation_id: UUID, review: ReviewInput) -
             details={"decision": review.decision},
         )
     )
+    if get_settings().durable_worker:
+        row.status, row.delivery_count = "running", 0
     db.commit()
     return row
 
@@ -170,17 +175,35 @@ def initial_state(row: Investigation, alert: Alert) -> dict:
     }
 
 
+@tracer.start_as_current_span("investigation.execute", record_exception=False, set_status_on_exception=False)
 def run_investigation(investigation_id: UUID, llm: AgentLLM | None = None) -> None:
     """One bounded local job. Session advisory lock survives transaction boundaries."""
     llm = llm or get_agent_llm()
     with execution_lock(investigation_id) as acquired:
         if not acquired:
             return
+        from opentelemetry import trace
+
+        trace.get_current_span().set_attribute("investigation.id", str(investigation_id))
         started = perf_counter()
         with session_factory()() as db:
             row = db.get(Investigation, investigation_id)
             if row is None or row.status != "running":
                 return
+            if (row.provider, row.model) != (llm.provider, llm.model):
+                row.status, row.error_code = "failed", "provider_changed"
+                db.commit()
+                return
+            if row.delivery_count:
+                for model in (AgentRun, ToolRun, LLMCall):
+                    db.execute(update(model).where(model.investigation_id == row.id, model.status == "running")
+                               .values(status="interrupted", error_code="worker_interrupted"))
+            if row.delivery_count >= 3:
+                row.status, row.error_code, row.ended_at = "failed", "delivery_limit", utcnow()
+                db.commit()
+                return
+            row.delivery_count += 1
+            db.commit()
             remaining = get_settings().investigation_timeout_seconds - row.active_ms / 1000
             alert = db.get(Alert, row.alert_id)
             seed = initial_state(row, alert)
@@ -264,6 +287,7 @@ class InvestigationRunner:
                     .where(Investigation.id == investigation_id, Investigation.status.in_(allowed))
                     .values(
                         status="running",
+                        delivery_count=0,
                         error_code=None,
                         ended_at=None,
                         started_at=func.coalesce(Investigation.started_at, utcnow()),
@@ -273,6 +297,8 @@ class InvestigationRunner:
                 db.commit()
                 if claimed is None:
                     return False
+            if get_settings().durable_worker:
+                return True
             future = self.pool.submit(run_investigation, investigation_id, self.llm)
             future.add_done_callback(lambda _: self.slots.release())
             return True

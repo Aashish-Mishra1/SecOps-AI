@@ -23,6 +23,7 @@ def app():
     os.environ.update(
         DATABASE_URL=url.set(database=name).render_as_string(hide_password=False),
         APP_ENV="test",
+        DURABLE_WORKER="false",
         REGISTRATION_ENABLED="true",
         AI_PROVIDER="mock",
         REQUESTS_PER_MINUTE="1000",

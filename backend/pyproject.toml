@@ -3,12 +3,22 @@ name = "secops-ai"
 version = "0.1.0"
 requires-python = ">=3.12,<3.14"
 dependencies = [
-  "fastapi>=0.115,<1", "uvicorn[standard]>=0.34,<1",
-  "sqlalchemy>=2.0,<2.1", "alembic>=1.15,<2", "psycopg[binary]>=3.2,<4",
-  "pydantic-settings>=2.8,<3", "email-validator>=2.2,<3",
-  "pgvector>=0.4,<1", "argon2-cffi>=23.1", "PyJWT>=2.10,<3",
-  "python-multipart>=0.0.20", "pypdf>=5.4,<7", "google-genai>=1.11,<2",
-  "langgraph>=1.0,<2", "langgraph-checkpoint-postgres>=3.0,<4"
+  "fastapi>=0.115,<1",
+  "uvicorn[standard]>=0.34,<1",
+  "sqlalchemy>=2.0,<2.1",
+  "alembic>=1.15,<2",
+  "psycopg[binary]>=3.2,<4",
+  "pydantic-settings>=2.8,<3",
+  "email-validator>=2.2,<3",
+  "pgvector>=0.4,<1",
+  "argon2-cffi>=23.1",
+  "PyJWT>=2.10,<3",
+  "python-multipart>=0.0.20",
+  "pypdf>=5.4,<7",
+  "google-genai>=1.11,<2",
+  "langgraph>=1.0,<2",
+  "langgraph-checkpoint-postgres>=3.0,<4",
+  "opentelemetry-sdk>=1.30,<2",
 ]
 
 [dependency-groups]

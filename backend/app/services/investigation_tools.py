@@ -120,6 +120,12 @@ class InvestigationTools:
         self.execution, self.organization_id = execution, organization_id
 
     def run(self, request: ToolRequest, allowed: set[str]) -> ToolResult:
+        from app.observability.tracing import span
+
+        with span("tool." + request.name):
+            return self._run(request, allowed)
+
+    def _run(self, request: ToolRequest, allowed: set[str]) -> ToolResult:
         if request.name not in allowed:
             raise AppError(403, "tool_forbidden", "Tool is not authorized for this specialist")
         self.execution.check()

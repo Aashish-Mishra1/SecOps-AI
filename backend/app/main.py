@@ -26,7 +26,8 @@ def create_app() -> FastAPI:
         from app.services.investigations import InvestigationRunner, reconcile_interrupted
 
         setup_checkpoints()
-        reconcile_interrupted()
+        if not settings.durable_worker:
+            reconcile_interrupted()
         runner = InvestigationRunner()
         app.state.investigation_runner = runner
         yield
@@ -113,7 +114,7 @@ def create_app() -> FastAPI:
                 vector = connection.execute(
                     text("SELECT extversion FROM pg_extension WHERE extname='vector'")
                 )
-                if not vector.scalar_one_or_none() or revision != "0002":
+                if not vector.scalar_one_or_none() or revision != "0003":
                     raise ValueError("Schema not ready")
         except Exception:
             raise AppError(503, "not_ready", "Database or schema is unavailable") from None

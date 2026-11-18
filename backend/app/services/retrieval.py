@@ -2,12 +2,13 @@ from time import perf_counter
 from uuid import UUID
 
 from sqlalchemy import func, select
-from sqlalchemy.orm import Session
+from sqlalchemy.orm import Session, load_only
 
 from app.ai.providers import Answer, Provider
 from app.config import get_settings
 from app.errors import AppError
 from app.models import Document, DocumentChunk
+from app.observability.tracing import span
 from app.schemas import Citation, RagOut, RetrievalOut, RetrievalRequest
 
 
@@ -19,6 +20,7 @@ def reciprocal_rank_fusion(rankings: list[list[UUID]]) -> dict[UUID, float]:
     return scores
 
 
+@span("rag.retrieve")
 def retrieve(
     db: Session, organization_id: UUID, request: RetrievalRequest, provider: Provider
 ) -> RetrievalOut:
@@ -38,6 +40,8 @@ def retrieve(
         conditions.append(Document.content_type == request.content_type)
     base = (
         select(DocumentChunk, Document)
+        .options(load_only(DocumentChunk.id, DocumentChunk.content, DocumentChunk.page, DocumentChunk.char_start),
+                 load_only(Document.id, Document.title))
         .join(Document, Document.id == DocumentChunk.document_id)
         .where(*conditions)
     )

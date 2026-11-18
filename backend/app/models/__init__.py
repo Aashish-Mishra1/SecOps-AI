@@ -165,6 +165,7 @@ class Investigation(Scoped, Base):
     initiated_by: Mapped[UUID]
     status: Mapped[str] = mapped_column(String(30), default="queued")
     graph_thread_id: Mapped[str] = mapped_column(String(100), unique=True)
+    delivery_count: Mapped[int] = mapped_column(Integer, server_default="0")
     request_id: Mapped[UUID] = mapped_column(default=uuid4)
     provider: Mapped[str] = mapped_column(String(20), default="mock")
     model: Mapped[str] = mapped_column(String(200), default="mock:agents-v1")

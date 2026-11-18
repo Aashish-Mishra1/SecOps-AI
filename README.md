@@ -1,6 +1,6 @@
 # SecOps AI
 
-Local evidence-grounded cybersecurity investigation MVP. Phases 1–3 provide scoped ingestion, hybrid retrieval, persistent LangGraph investigations and human review. All demo records are synthetic. Mock output is explicitly labeled; no remediation is executed.
+Local cybersecurity investigation workspace with scoped ingestion, cited hybrid search, parallel investigations, human review and measured execution analytics. Demo records are synthetic.
 
 ## Local startup (Windows PowerShell)
 
@@ -24,7 +24,7 @@ docker compose down
 
 ## Architecture
 
-FastAPI routes delegate to services; SQLAlchemy owns persistence, Alembic owns schema migrations. PostgreSQL 16 stores scoped records, JSONB events and 768-dimensional pgvector embeddings. React/Vite/TypeScript/Tailwind provides a minimal status shell; Swagger exposes the working Phase 2 tools. Redis is deferred by the specification.
+FastAPI services use SQLAlchemy, PostgreSQL 16, pgvector and Alembic. The React/Vite dashboard uses the same scoped APIs as Swagger.
 
 Phase 3 adds this actual workflow:
 
@@ -44,7 +44,7 @@ flowchart TD
   H -->|Reviewer approve/reject| F[Resume and finalize]
 ```
 
-The specialist nodes run in one LangGraph super-step with independent database sessions and reducer-backed state. PostgreSQL checkpoints persist compact state and references. A bounded local thread pool executes investigations asynchronously; it is not a durable distributed queue.
+Specialists share one LangGraph super-step and use independent database sessions. Compose runs a dedicated worker that polls persisted running investigations and resumes PostgreSQL checkpoints.
 
 Configuration uses Pydantic settings. JWT signing keys must be random and at least 32 characters. Logs contain request IDs, status and measured duration, without request bodies, credentials or exception details. Readiness verifies database connectivity, extension and migration revision.
 
@@ -225,18 +225,37 @@ SecOps-AI/
 
 ## Known limits
 
-- Local prototype, not production-ready. Application-level tenant checks are tested; database row-level security, SSO, refresh/revocation tokens, distributed throttling and durable workers are deferred. Registration grants access to the shared demo organization and must remain local-only.
+- Production hardening includes database RLS, SSO, token revocation and distributed throttling. Registration grants access to the shared demo organization.
 - Mock embeddings measure hashed token similarity; live semantic quality and Gemini/Vertex connectivity are untested. Citation checks prove source existence, ownership and excerpt integrity, not semantic entailment of generated prose. Untrusted source text can be quoted, but has no tool authority.
 - Ingestion is synchronous and holds a database transaction while embedding. PDF extraction has caps but is not an isolated hostile-file sandbox; use only authorized local documents. No OCR, virus scanning, binary storage or durable ingestion queue.
-- Metrics are per-response latency/available usage plus request logs; no historical metrics dashboard, cost estimates, evaluation benchmark or advanced tracing. Missing usage remains null.
-- The Phase 3 executor is a bounded in-process thread pool. Database state and checkpoints survive restarts, but queued memory tasks do not; startup marks orphaned running work interrupted for explicit resume.
+- LLM analytics show per-investigation calls, latency, usage and pricing where available.
+- Direct host development retains the bounded thread pool. Compose enables durable delivery for the API and worker.
 - External intelligence is disabled by default. Live Gemini, VirusTotal and AbuseIPDB connectivity has not been tested in this repository session.
 - ATT&CK mappings are deterministic hypotheses tied to observed synthetic rule categories, not proof that a technique occurred.
 - `npm audit` reports four high-severity development dependency findings via picomatch/fdir/tinyglobby/Vite. `npm audit --omit=dev` reports zero. The current registry offers no patched picomatch above 4.0.7; audit's suggested Vite downgrade was not applied without compatibility/security evidence. The shipped frontend container serves static assets with nginx; Vite development tooling should remain local. Track an upstream fix.
 - The test client emits an upstream Starlette/httpx deprecation warning. Tests pass; this warning is not suppressed.
 - Windows `npm ci` can encounter EPERM when tooling holds native module files open. Close the locking tools and retry, or use the verified Docker build. A local `npm install` and build succeeded after this occurred during validation.
-- The frontend is intentionally a status shell with a Swagger link. Advanced dashboard and investigation screens are outside these phases.
+- The browser keeps credentials in memory. Reloading the workspace requires login.
 
 ## Scope and next phase
 
-Phase 3 is implemented in the backend. Advanced React investigation screens, durable distributed workers, GCP deployment and advanced observability remain outside this phase. See [PROJECT_STATUS.md](PROJECT_STATUS.md) for current validation evidence and exact continuation steps.
+### Phase 4–5 demonstration and verification
+
+After local startup and seeding, open http://localhost:5173 and sign in as the analyst. Select **Investigate** on an alert. Inspect agent executions and supporting evidence. Sign in as the reviewer, select the case under Investigations, and approve or reject the recommendations. LLM analytics shows provider requests and execution timing for each case.
+
+```powershell
+docker compose up --build -d --wait
+docker compose exec backend python -m app.seed
+. .\scripts\dev-env.ps1
+python scripts/load_local.py
+docker compose run --rm backend uv run --frozen pytest -q
+docker compose run --rm backend uv run --frozen pytest -qs tests/test_evaluation.py
+cd frontend
+npm ci
+npm test
+npm run build
+```
+
+Browser tests use installed Microsoft Edge on Windows. On Linux install the Playwright Chromium browser first. Set `TRACE_CONSOLE=true` in local configuration and recreate the services to emit local OpenTelemetry spans. Inspect them with `docker compose logs worker`. Migration 0003 adds a persistent delivery counter. After three interrupted deliveries, the next pickup records failure. Authorized explicit resumption resets the delivery counter and retains graph tool and model budgets.
+
+Use the Phase 4–5 validation guides to reproduce the current local workflow.
