@@ -1,5 +1,6 @@
 import logging
 import time
+from contextlib import asynccontextmanager
 from uuid import uuid4
 
 from fastapi import FastAPI, Request
@@ -18,8 +19,24 @@ from app.observability.logging import configure_logging
 def create_app() -> FastAPI:
     settings = get_settings()
     configure_logging()
+
+    @asynccontextmanager
+    async def lifespan(app):
+        from app.graph.checkpoints import setup_checkpoints
+        from app.services.investigations import InvestigationRunner, reconcile_interrupted
+
+        setup_checkpoints()
+        reconcile_interrupted()
+        runner = InvestigationRunner()
+        app.state.investigation_runner = runner
+        yield
+        runner.shutdown()
+
     app = FastAPI(
-        title="SecOps AI", version="0.1.0", description="Phase 1–2: data, access and cited retrieval"
+        title="SecOps AI",
+        version="0.2.0",
+        lifespan=lifespan,
+        description="Scoped ingestion, retrieval and persistent multi-agent investigations",
     )
     app.add_middleware(
         CORSMiddleware,
@@ -96,15 +113,15 @@ def create_app() -> FastAPI:
                 vector = connection.execute(
                     text("SELECT extversion FROM pg_extension WHERE extname='vector'")
                 )
-                if not vector.scalar_one_or_none() or revision != "0001":
+                if not vector.scalar_one_or_none() or revision != "0002":
                     raise ValueError("Schema not ready")
         except Exception:
             raise AppError(503, "not_ready", "Database or schema is unavailable") from None
         return {"status": "ready", "provider": settings.ai_provider}
 
-    from app.api import alerts, auth, documents, events
+    from app.api import alerts, auth, documents, events, investigations
 
-    for router in (auth.router, alerts.router, events.router, documents.router):
+    for router in (auth.router, alerts.router, events.router, documents.router, investigations.router):
         app.include_router(router, prefix="/api/v1")
     return app
 

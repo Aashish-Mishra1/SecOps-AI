@@ -147,7 +147,6 @@ class AuditEvent(Scoped, Base):
     details: Mapped[dict] = mapped_column(JSONB, default=dict)
 
 
-# Investigation tables are schema contracts only; workflow and HTTP APIs are deferred.
 class Investigation(Scoped, Base):
     __tablename__ = "investigations"
     __table_args__ = (
@@ -155,13 +154,25 @@ class Investigation(Scoped, Base):
         ForeignKeyConstraint(["organization_id", "alert_id"], ["alerts.organization_id", "alerts.id"]),
         ForeignKeyConstraint(["organization_id", "initiated_by"], ["users.organization_id", "users.id"]),
         Index("ix_investigation_org_status", "organization_id", "status"),
-        CheckConstraint("attempt >= 0 AND attempt <= 1"),
-        CheckConstraint("status IN ('queued','running','awaiting_review','approved','rejected','failed')"),
+        UniqueConstraint("organization_id", "request_id"),
+        CheckConstraint("attempt >= 0 AND attempt <= 3", name="investigations_attempt_check"),
+        CheckConstraint(
+            "status IN ('queued','running','interrupted','awaiting_review','approved','rejected','failed')",
+            name="investigations_status_check",
+        ),
     )
     alert_id: Mapped[UUID]
     initiated_by: Mapped[UUID]
     status: Mapped[str] = mapped_column(String(30), default="queued")
     graph_thread_id: Mapped[str] = mapped_column(String(100), unique=True)
+    request_id: Mapped[UUID] = mapped_column(default=uuid4)
+    provider: Mapped[str] = mapped_column(String(20), default="mock")
+    model: Mapped[str] = mapped_column(String(200), default="mock:agents-v1")
+    started_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    ended_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    active_ms: Mapped[float] = mapped_column(default=0.0)
+    tool_count: Mapped[int] = mapped_column(default=0)
+    llm_count: Mapped[int] = mapped_column(default=0)
     attempt: Mapped[int] = mapped_column(Integer, default=0)
     report: Mapped[dict | None] = mapped_column(JSONB)
     error_code: Mapped[str | None] = mapped_column(String(100))
@@ -198,6 +209,38 @@ class AgentRun(Identity, Base):
     model: Mapped[str] = mapped_column(String(200))
     trace_id: Mapped[str | None] = mapped_column(String(100))
     error_code: Mapped[str | None] = mapped_column(String(100))
+    latency_ms: Mapped[float | None]
+    prompt_version: Mapped[str] = mapped_column(String(30), default="agents-v1")
+    result: Mapped[dict | None] = mapped_column(JSONB)
+
+
+class ToolRun(Identity, Base):
+    __tablename__ = "tool_runs"
+    investigation_id: Mapped[UUID] = mapped_column(ForeignKey("investigations.id"), index=True)
+    agent_run_id: Mapped[UUID] = mapped_column(ForeignKey("agent_runs.id"), index=True)
+    tool: Mapped[str] = mapped_column(String(100))
+    status: Mapped[str] = mapped_column(String(30))
+    latency_ms: Mapped[float | None]
+    error_code: Mapped[str | None] = mapped_column(String(100))
+    input_tokens: Mapped[int | None]
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)
+
+
+class LLMCall(Identity, Base):
+    __tablename__ = "llm_calls"
+    investigation_id: Mapped[UUID] = mapped_column(ForeignKey("investigations.id"), index=True)
+    agent_run_id: Mapped[UUID] = mapped_column(ForeignKey("agent_runs.id"), index=True)
+    provider: Mapped[str] = mapped_column(String(20))
+    model: Mapped[str] = mapped_column(String(200))
+    status: Mapped[str] = mapped_column(String(30))
+    input_tokens: Mapped[int | None]
+    output_tokens: Mapped[int | None]
+    total_tokens: Mapped[int | None]
+    latency_ms: Mapped[float | None]
+    time_to_first_token_ms: Mapped[float | None]
+    cost_usd: Mapped[float | None]
+    error_code: Mapped[str | None] = mapped_column(String(100))
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)
 
 
 class Review(Identity, Base):

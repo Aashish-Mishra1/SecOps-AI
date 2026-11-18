@@ -27,10 +27,10 @@ Gate: containers start or exact blocker recorded; `/api/v1/health/ready` succeed
 Gate: auth/import/retrieval integration tests, duplicate import and invalid upload tests.
 
 ## M2 — Agent workflow (120 minutes)
-- [ ] Define typed model provider, mock adapter and schemas; implement graph nodes and bounded routing.
-- [ ] Implement actual read-only tools and evidence validation; persist agent runs and status.
-- [ ] Add critic targeted retry; checkpoint saver, review interrupt/resume, role checks, idempotency.
-- [ ] Add investigation HTTP endpoints, failure handling and tests.
+- [x] Define typed model provider, mock adapter and schemas; implement graph nodes and bounded routing.
+- [x] Implement actual read-only tools and evidence validation; persist agent runs and status.
+- [x] Add critic targeted retry; checkpoint saver, review interrupt/resume, role checks, idempotency.
+- [x] Add investigation HTTP endpoints, failure handling and tests.
 Gate: suspicious case goes from alert to cited draft to reviewed report, benign case remains proportionate; restart review test.
 
 ## M3 — Frontend vertical slice (90 minutes)

@@ -9,6 +9,7 @@ from app.config import get_settings
 from app.db import session_factory
 from app.models import Alert, Organization, ThreatIndicator, User
 from app.schemas import EventIn
+from app.seed.scenarios import seed_scenarios
 from app.services.auth import hasher
 from app.services.documents import ingest
 from app.services.events import import_events
@@ -122,6 +123,7 @@ def seed() -> None:
             "10:00–10:15 UTC maintenance window from 198.51.100.8. This alone does not establish compromise."
         )
         ingest(db, analyst, policy.encode(), "authentication-policy.md", MockProvider())
+        seed_scenarios(db, analyst)
         # Samples are provided in the repository; seeding never exports credentials.
         print(
             json.dumps(

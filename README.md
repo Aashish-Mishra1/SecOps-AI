@@ -1,6 +1,6 @@
 # SecOps AI
 
-Local cybersecurity data and evidence retrieval foundation. Phases 1–2 only: no agents, investigations, review workflow or deployment. All demo records are synthetic. Mock embeddings and extractive answers are explicitly labeled.
+Local evidence-grounded cybersecurity investigation MVP. Phases 1–3 provide scoped ingestion, hybrid retrieval, persistent LangGraph investigations and human review. All demo records are synthetic. Mock output is explicitly labeled; no remediation is executed.
 
 ## Local startup (Windows PowerShell)
 
@@ -25,6 +25,26 @@ docker compose down
 ## Architecture
 
 FastAPI routes delegate to services; SQLAlchemy owns persistence, Alembic owns schema migrations. PostgreSQL 16 stores scoped records, JSONB events and 768-dimensional pgvector embeddings. React/Vite/TypeScript/Tailwind provides a minimal status shell; Swagger exposes the working Phase 2 tools. Redis is deferred by the specification.
+
+Phase 3 adds this actual workflow:
+
+```mermaid
+flowchart TD
+  A[Create scoped investigation] --> S[Supervisor]
+  S --> L[Log analysis / bounded ReAct]
+  S --> K[Knowledge / hybrid RAG]
+  S --> T[Threat intelligence / offline or explicit live adapter]
+  L --> R[Remediation proposals]
+  K --> R
+  T --> R
+  R --> C[Deterministic citation checks + critic]
+  C -->|Targeted retry, bounded cycles| S
+  C -->|Accepted or explicitly incomplete| P[Persist report]
+  P --> H[LangGraph human-review interrupt]
+  H -->|Reviewer approve/reject| F[Resume and finalize]
+```
+
+The specialist nodes run in one LangGraph super-step with independent database sessions and reducer-backed state. PostgreSQL checkpoints persist compact state and references. A bounded local thread pool executes investigations asynchronously; it is not a durable distributed queue.
 
 Configuration uses Pydantic settings. JWT signing keys must be random and at least 32 characters. Logs contain request IDs, status and measured duration, without request bodies, credentials or exception details. Readiness verifies database connectivity, extension and migration revision.
 
@@ -55,6 +75,10 @@ In another terminal: `cd frontend; npm ci; npm run dev`. The Vite proxy routes `
 - Exact pgvector cosine retrieval and PostgreSQL English full-text search; hybrid reciprocal rank fusion uses `sum(1/(60+rank))`, 10 candidates per mode by default and top 5 results. Top-K supports 1–20; candidate pools expand for K > 10. Organization, model, ready status, document IDs, exact title and content type are filtered before ranking. Semantic candidates require cosine similarity > 0.05.
 - Context responses include database-validated chunk/document citations and bounded excerpts. Empty evidence returns insufficient knowledge. Mock answers quote source excerpts; they are not generated intelligence. Unknown usage metrics are `null`; durations are measured with a monotonic clock.
 - Structured request logs, safe JSON errors, request IDs, upload bounds, per-process request throttling, database audit records, Swagger and liveness/readiness endpoints.
+- Typed multi-agent orchestration with supervisor, log, knowledge, threat-intelligence, remediation, critic, reporting and review nodes. Deterministic citation checks cannot be waived by the critic, and reflection is bounded.
+- Parameterized read-only tools derive tenant, alert identities and a two-hour event window from authorized database records. Model output cannot provide SQL or broaden organization scope.
+- Reports persist validated evidence, timelines, tentative MITRE mappings, limitations and approval status. Review authorizes recommendations only and never executes them.
+- Per-agent, tool and LLM-call records track measured latency, failures, available token usage and configured cost. Mock token/cost values remain null.
 
 ## Demo accounts and API use
 
@@ -82,6 +106,16 @@ Prefix every path below with `/api/v1`. List endpoints use `limit` (20 by defaul
 | GET | `/documents`, `/documents/{id}` | Both; scoped metadata/status |
 | POST | `/retrieval/search` | Both; semantic, keyword or hybrid sources |
 | POST | `/rag/query` | Both; cited response and measured usage/latency |
+| POST / GET | `/investigations` | Analyst creates; both roles list scoped investigations |
+| POST | `/investigations/{id}/start` | Analyst starts a queued investigation |
+| POST | `/investigations/{id}/resume` | Analyst resumes interrupted analysis; reviewer resumes persisted review |
+| GET | `/investigations/{id}` | Scoped status, report and provider identity |
+| GET | `/investigations/{id}/findings` | Structured specialist findings |
+| GET | `/investigations/{id}/timeline` | Actual persisted agent runs |
+| GET | `/investigations/{id}/evidence` | Scoped safe excerpts and source metadata |
+| POST | `/investigations/{id}/review` | Reviewer approve/reject; rejection requires comment |
+| GET | `/investigations/{id}/report` | Persisted cited report after reporting node |
+| GET | `/investigations/{id}/metrics` | Measured execution, tool and provider usage when available |
 
 Errors use `{ "error": { "code", "message", "request_id" } }`. Out-of-scope resource IDs return 404; filtered searches return no matching items. Failed document uploads return a safe error; inspect `/documents` for persisted failure status. Swagger `/docs` and schema `/openapi.json` are public API documentation, without data or credentials.
 
@@ -99,10 +133,12 @@ All tables have UUID primary keys. Timestamp fields use UTC `timestamptz`. Model
 | `document_chunks` | Document/index uniqueness, content, page/offsets, vector(768), model, generated English tsvector |
 | `threat_indicators` | Scoped offline snapshot, classification, source and observation time |
 | `audit_events` | Scoped actor/action/resource/time and safe structured details |
-| `investigations` | Future alert/initiator links, thread ID, state, bounded attempt, report and timestamps |
-| `evidence` | Future investigation source reference and excerpt |
-| `agent_runs` | Future per-node durations/status and nullable token/cost measurements |
-| `reviews` | Future unique investigation decision and reviewer |
+| `investigations` | Alert/initiator links, idempotency key, provider/model, thread ID, lifecycle, bounded attempt, report and measured active time |
+| `evidence` | Scoped investigation source reference, safe excerpt and validation metadata |
+| `agent_runs` | Per-node status, attempt, duration, prompt version and compact result |
+| `tool_runs` | Allowlisted tool status, duration, errors and available embedding usage |
+| `llm_calls` | Provider/model, status, latency, nullable tokens/TTFT/cost and errors |
+| `reviews` | Unique reviewer decision, comment and timestamp |
 
 Events have organization/account/time and organization/IP/time indexes; alerts and investigations have organization/time or status indexes. Chunks have GIN full-text and organization/model indexes. Exact cosine search is deliberate for the small corpus; no unbenchmarked HNSW index. Pool defaults: 5 connections + 5 overflow, pre-ping, 10-second acquisition timeout, 5-second connect timeout, 15-second SQL statement timeout. Embedding dimension is a fixed migration parameter, 768; changing it requires a new migration and reindexing.
 
@@ -140,6 +176,23 @@ The test database account needs CREATE DATABASE permission; the suite creates a 
 
 Detailed executed commands, results and environment audit are in [docs/PHASE_1_2_VALIDATION.md](docs/PHASE_1_2_VALIDATION.md).
 
+### Phase 3 demo and evaluation
+
+```powershell
+docker compose up --build -d --wait
+docker compose exec backend python -m app.seed
+. .\scripts\dev-env.ps1
+python scripts\phase3_smoke.py
+
+# Offline synthetic comparison; direct backend imports require this path.
+$env:PYTHONPATH = "backend"
+python scripts\evaluate_phase3.py
+```
+
+The smoke test logs in as analyst and reviewer, launches the seeded brute-force scenario, waits for the persistent review interrupt, validates report citations, approves recommendations without executing them, resumes the same checkpoint and prints measured metrics. Evaluation creates five synthetic investigations and reports actual measured latency, rule-aligned classification accuracy, citation validity and a policy-retrieval proxy. It is not a real-world benchmark.
+
+Automated tests do not make live calls. Optional VirusTotal or AbuseIPDB lookup requires `THREAT_INTEL_PROVIDER`, `ALLOW_EXTERNAL_INTEL=true`, and the corresponding local API key. Reserved/private IPs and synthetic domains are never sent externally; provider failures do not silently fall back.
+
 ## Directory structure
 
 ```text
@@ -151,11 +204,12 @@ SecOps-AI/
     migrations/versions/0001_phase_1_and_2_schema.py
     app/
       main.py, config.py, db.py, errors.py
-      api/                 # thin auth, alerts, events, documents routes
+      api/                 # thin auth, alerts, events, documents, investigations routes
       models/              # SQLAlchemy schema contracts
       schemas/             # Pydantic request/response validation
-      services/            # auth, event/document ingestion, alerts, retrieval
-      ai/                  # provider protocol, mock and Gemini adapters
+      services/            # ingestion, retrieval, tools, investigation lifecycle and metrics
+      ai/                  # embedding/agent providers and versioned prompts
+      graph/               # typed state, PostgreSQL checkpoints and workflow
       observability/       # allowlisted JSON logging
       seed/                # deterministic synthetic scenarios
     tests/                 # unit and real PostgreSQL integration tests
@@ -175,6 +229,9 @@ SecOps-AI/
 - Mock embeddings measure hashed token similarity; live semantic quality and Gemini/Vertex connectivity are untested. Citation checks prove source existence, ownership and excerpt integrity, not semantic entailment of generated prose. Untrusted source text can be quoted, but has no tool authority.
 - Ingestion is synchronous and holds a database transaction while embedding. PDF extraction has caps but is not an isolated hostile-file sandbox; use only authorized local documents. No OCR, virus scanning, binary storage or durable ingestion queue.
 - Metrics are per-response latency/available usage plus request logs; no historical metrics dashboard, cost estimates, evaluation benchmark or advanced tracing. Missing usage remains null.
+- The Phase 3 executor is a bounded in-process thread pool. Database state and checkpoints survive restarts, but queued memory tasks do not; startup marks orphaned running work interrupted for explicit resume.
+- External intelligence is disabled by default. Live Gemini, VirusTotal and AbuseIPDB connectivity has not been tested in this repository session.
+- ATT&CK mappings are deterministic hypotheses tied to observed synthetic rule categories, not proof that a technique occurred.
 - `npm audit` reports four high-severity development dependency findings via picomatch/fdir/tinyglobby/Vite. `npm audit --omit=dev` reports zero. The current registry offers no patched picomatch above 4.0.7; audit's suggested Vite downgrade was not applied without compatibility/security evidence. The shipped frontend container serves static assets with nginx; Vite development tooling should remain local. Track an upstream fix.
 - The test client emits an upstream Starlette/httpx deprecation warning. Tests pass; this warning is not suppressed.
 - Windows `npm ci` can encounter EPERM when tooling holds native module files open. Close the locking tools and retry, or use the verified Docker build. A local `npm install` and build succeeded after this occurred during validation.
@@ -182,6 +239,4 @@ SecOps-AI/
 
 ## Scope and next phase
 
-Future graph nodes should call authorized ingestion/retrieval service interfaces, receive compact source references, and validate citations in the database. Add LangGraph checkpoints via its supported setup, scope thread access through investigations, bound retries, and persist idempotent state transitions. Current investigation-related tables are schema preparation only. No checkpoint tables or background worker claims are made.
-
-Next phase: define typed graph state and allowed tool schemas; inject `Provider` and SQLAlchemy sessions into services; build a sequential supervisor/specialist graph; persist evidence and node runs; add bounded critic retry, reviewer-only interrupt/resume and idempotent state transitions; then expose investigation endpoints and UI. Preserve model labels and org filters. Extend tests for restart/resume, role guards, invalid evidence and provider failures before adding parallel execution. No remediation or network probing belongs in the graph.
+Phase 3 is implemented in the backend. Advanced React investigation screens, durable distributed workers, GCP deployment and advanced observability remain outside this phase. See [PROJECT_STATUS.md](PROJECT_STATUS.md) for current validation evidence and exact continuation steps.
