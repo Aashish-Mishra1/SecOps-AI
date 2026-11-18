@@ -11,6 +11,8 @@ Last updated: 18 November 2026 (Asia/Calcutta)
 
 ## Current implementation progress
 
+- Phase 4 dashboard verified with a production build, 41 backend tests and an Edge analyst-to-reviewer investigation. See docs/PHASE_4_VALIDATION.md.
+
 - Phase 3 mock/offline acceptance path is complete and verified end to end: create -> asynchronous investigation -> review interrupt -> approval/rejection -> checkpoint resume -> persisted final report.
 - Database revision is `0002_investigation_execution_and_metrics`; a fresh Compose volume successfully applied all migrations and initialized LangGraph checkpoint tables.
 - Normal `secops-ai` Compose services were restored after disposable verification and were healthy at the last check.
